@@ -15,7 +15,7 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "settings")
 import django
 from django.contrib.auth.models import User
 from django.conf import settings
-from web.tlp_methods import get_tlp_users,get_analyses_numbers_matching_tlp
+from web.tlp_methods import get_tlp_users,get_analyses_numbers_matching_tlp2
 from lib.cuckoo.common.whitelist import is_whitelisted_domain, is_whitelisted_url
 
 
@@ -137,7 +137,7 @@ def run_tldr(id, username, clionly):
     if clionly:
         django.setup()
     user = User.objects.get(username=username)
-    myids = get_analyses_numbers_matching_tlp(user.username, get_tlp_users(user))
+    myids = get_analyses_numbers_matching_tlp2(user.username)
     if str(myid) in myids:
         mdbquery = {"info.id": myid}
     output = {"File": {}}
@@ -235,7 +235,6 @@ def run_tldr(id, username, clionly):
         EsInsert("tldr-{0}".format(today.strftime('%Y%m')), "tldr", myid, outJson)
     print(outJson)
     return outJson
-
 
 if __name__ == '__main__':
     clid = True

@@ -1,0 +1,6 @@
+\.thawte\.com\/
+\.verisign\.com\/
+\.verisign\.com[0-9]{1,}
+\.geotrust\.com[0-9]{1,}
+\.geotrust\.com\/
+\.certum\.pl\/

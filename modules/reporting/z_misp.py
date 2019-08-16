@@ -39,7 +39,8 @@ except ImportError:
 # from django.contrib.auth.models import User
 from lib.cuckoo.common.abstracts import Report
 from lib.cuckoo.common.exceptions import CuckooProcessingError
-from lib.cuckoo.common.whitelist import is_whitelisted_domain, is_whitelisted_url, is_whitelisted_ip
+from lib.cuckoo.common.whitelist import is_whitelisted_domain, is_whitelisted_url, is_whitelisted_ip, \
+    is_whitelisted_regex_url
 from idstools import rule
 #from lib.tldr.tldr import run_tldr
 #from web.tlp_methods import get_tlp_users,get_analyses_numbers_matching_tlp
@@ -138,11 +139,12 @@ class MISP(Report):
                     for ncon in results["behavior"]["summary"]["connects_ip"]:
                         ##TODO add whitelisting
                         # if not str(deadcon[0]).startswith('10.200.0.') and not is_whitelisted_ip(deadcon[0]):
-                        if not str(ncon[0]).startswith('10.200.0.'):
+                        connects_ip = ncon[0] if isinstance(ncon, list) else ncon
+                        if not str(connects_ip).startswith('10.200.0.') and not str(connects_ip) == "127.0.0.1":
                             ## Build the ip-dst object
                             ipdst_obj = MISPObject(name='network-connection', standalone=False, text="Potential C2 traffic")
                             ## Add your attributes
-                            ipdst_obj.add_attribute('ip-dst', value=ncon[0])
+                            ipdst_obj.add_attribute('ip-dst', value=connects_ip)
                             ipdst_obj.add_attribute('text', type="text", value='Potential C2 traffic')
                             ## Add your reference
                             refs_to_add.append(self.create_reference(initial_file_object,ipdst_obj.uuid,  'communicates-with'))
@@ -194,6 +196,17 @@ class MISP(Report):
                         urls_added[uri_] = url_obj.uuid
                         event_obj.add_object(url_obj)
         if 'network' in results:
+            if 'http' in results["network"]:
+                for entry in results["network"]["http"]:
+                    uri_ = entry["uri"]
+                    if (not is_whitelisted_domain(entry["host"])) and (
+                            not is_whitelisted_url(uri_) and (uri_ not in urls_added) and "." in uri_):
+                        url_obj = MISPObject(name='url', standalone=False)
+                        url_obj.add_attribute('url', value=uri_).add_tag("tlp:{0}".format(tlp))
+                        refs_to_add.append(self.create_reference(initial_file_object, url_obj.uuid, 'communicates-with'))
+                        urls_added[uri_] = url_obj.uuid
+                        event_obj.add_object(url_obj)
+
             if 'domains' in results['network']:
                 for entry in results["network"].get('domains',[]):
                     if entry["domain"] in resolved_hosts:
@@ -259,7 +272,7 @@ class MISP(Report):
                     if alert["src_ip"] in ips_added:
                         refs_to_add.append(self.create_reference(suri_obj.uuid, ips_added[alert["src_ip"]], 'mitigates'))
 
-        ## Add URLs found in memory
+        # Add URLs found in memory
         if 'procmemory' in mongo_obj:
             ## Didn't want to, but had to go back to mongo to get the procmemory stuff
             r = mongo_obj["procmemory"]
@@ -273,7 +286,7 @@ class MISP(Report):
                         continue
                     seen_urls.add(memurl)
                     domain = memurl.split('://')[1].split('/')[0]
-                    if (not is_whitelisted_url(memurl)) and (not is_whitelisted_domain(domain) and "." in memurl):
+                    if (not is_whitelisted_url(memurl)) and (not is_whitelisted_domain(domain) and (not is_whitelisted_regex_url(memurl)) and "." in memurl):
                         ## Create a URL object and related it if found in memory and not whitelisted
                         if memurl in urls_added and initial_file_object:
                             refs_to_add.append(self.create_reference(urls_added[memurl], initial_file_object, 'contained-within'))

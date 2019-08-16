@@ -308,7 +308,7 @@ def get_misp_event(analysis_id):
         misp.search_index(eventinfo="Phoenix Sandbox analysis #" + str(analysis_id)),
         "Couldn't search MISP for {0}".format(str(
             analysis_id)))
-    if search_result:
+    if search_result and "response" in search_result and search_result["response"]:
         return reduce(
             lambda x, y: y if y["timestamp"] > x["timestamp"] and y["info"] == "Phoenix Sandbox analysis #" + str(
                 analysis_id) else x, search_result["response"])

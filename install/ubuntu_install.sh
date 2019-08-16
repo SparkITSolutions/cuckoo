@@ -501,10 +501,10 @@ if [ -z "$VBOXCHECK" ]; then
     wget -q https://www.virtualbox.org/download/oracle_vbox_2016.asc -O- | sudo apt-key add -
     wget -q https://www.virtualbox.org/download/oracle_vbox.asc -O- | sudo apt-key add -
     sudo apt-get update -y
-    sudo apt-get install -y virtualbox-5.2
+    sudo apt-get install -y virtualbox-6.0
     ##TODO - don't greasily hard code virtualbox extension packs in an installer you infantile pillock
-    wget "https://download.virtualbox.org/virtualbox/5.2.6/Oracle_VM_VirtualBox_Extension_Pack-5.2.6-120293.vbox-extpack"
-    echo y | vboxmanage extpack install Oracle_VM_VirtualBox_Extension_Pack-5.2.6-120293.vbox-extpack
+    wget "https://download.virtualbox.org/virtualbox/6.0.8/Oracle_VM_VirtualBox_Extension_Pack-6.0.8.vbox-extpack"
+    echo y | vboxmanage extpack install Oracle_VM_VirtualBox_Extension_Pack-6.0.8.vbox-extpack
 fi
 
 # Setup the VM network, where your host will act as a default gateway for the guest VMs
@@ -644,10 +644,13 @@ setup_mongo(){
 docker-compose -f ../docker/docker-compose.yml exec -T phoenix-mongo sh -c "mongo cuckoo --eval \"db.analysis.createIndex({'info.ended':-1})\""
 docker-compose -f ../docker/docker-compose.yml exec -T phoenix-mongo sh -c "mongo cuckoo --eval \"db.analysis.createIndex({'info.id':1})\""
 docker-compose -f ../docker/docker-compose.yml exec -T phoenix-mongo sh -c "mongo cuckoo --eval \"db.analysis.createIndex({'info.started':1})\""
+docker-compose -f ../docker/docker-compose.yml exec -T phoenix-mongo sh -c "mongo cuckoo --eval \"db.analysis.createIndex({'target.category':1})\""
 docker-compose -f ../docker/docker-compose.yml exec -T phoenix-mongo sh -c "mongo cuckoo --eval \"db.analysis.createIndex({'procmemory.extracted.sha1':-1})\""
 docker-compose -f ../docker/docker-compose.yml exec -T phoenix-mongo sh -c "mongo cuckoo --eval \"db.analysis.createIndex({'procmemory.extracted.sha1':1})\""
 docker-compose -f ../docker/docker-compose.yml exec -T phoenix-mongo sh -c "mongo cuckoo --eval \"db.analysis.createIndex({'network.http_ex.sha1':1})\""
 docker-compose -f ../docker/docker-compose.yml exec -T phoenix-mongo sh -c "mongo cuckoo --eval \"db.analysis.createIndex({'network.https_ex.sha1':1})\""
+docker-compose -f ../docker/docker-compose.yml exec -T phoenix-mongo sh -c "mongo cuckoo --eval \"db.analysis.createIndex({'network.http_ex.md5':1})\""
+docker-compose -f ../docker/docker-compose.yml exec -T phoenix-mongo sh -c "mongo cuckoo --eval \"db.analysis.createIndex({'network.https_ex.md5':1})\""
 docker-compose -f ../docker/docker-compose.yml exec -T phoenix-mongo sh -c "mongo cuckoo --eval \"db.analysis.createIndex({'procmemory.extracted.sha256':1})\""
 docker-compose -f ../docker/docker-compose.yml exec -T phoenix-mongo sh -c "mongo cuckoo --eval \"db.analysis.createIndex({'target.file.sha256':1})\""
 docker-compose -f ../docker/docker-compose.yml exec -T phoenix-mongo sh -c "mongo cuckoo --eval \"db.analysis.createIndex({'dropped.sha256':1})\""
