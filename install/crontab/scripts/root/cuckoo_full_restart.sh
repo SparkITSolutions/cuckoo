@@ -9,6 +9,7 @@ for i in cuckoo_all openvpn; do
 done
 pkill ping
 service netfilter-persistent restart
+service docker restart
 /etc/init.d/fail2ban restart
 /etc/init.d/openvpn start
 sleep 10
