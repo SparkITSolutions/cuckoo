@@ -26,9 +26,9 @@
 ### Preparing OpenVPN configs
 If you have a folder of OpenVPN configs that end in `.ovpn`, then run this to modify them slightly:
 ```bash
-    cd my/openvpn/directory
-    ls *ovpn|while read line; do O=$(echo $line|sed 's/ //g'); mv "$line" "$O"; do
-ne
+cd my/openvpn/directory
+
+ls *ovpn|while read line; do O=$(echo $line|sed 's/ //g'); mv "$line" "$O"; done
 
 ls *ovpn|while read vpn; do echo 'keepalive 10 60
 route 0.0.0.0 192.0.0.0 net_gateway
@@ -36,8 +36,7 @@ route 64.0.0.0 192.0.0.0 net_gateway
 route 128.0.0.0 192.0.0.0 net_gateway
 route 192.0.0.0 192.0.0.0 net_gateway' >> $vpn; done
 
-ls *ovpn|awk -F '.' '{print $1}'|while read line; do mv $line.ovpn $line.conf; done
-
+ls *.ovpn | while read NAME; do SHORT=$(echo -ne ${NAME}|awk -F '.' '{print $1}'); mv ${NAME} ${SHORT}.conf; done
 
 ```
 
