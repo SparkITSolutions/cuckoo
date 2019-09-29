@@ -1,3 +1,4 @@
+pyinotify==0.9.6
 alembic==0.8.0
 beautifulsoup4==4.4.1
 cffi==1.6.0
