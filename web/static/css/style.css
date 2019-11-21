@@ -136,11 +136,20 @@ a.tag-label {
     margin-bottom: 10px;
 }
 
-.table-striped > tbody > tr:nth-child(2n) > td, .table-striped > tbody > tr:nth-child(2n) > th {
+/*.table-striped > tbody > tr:nth-child(2n) > td, .table-striped > tbody > tr:nth-child(2n) > th {*/
+   /*background-color: #efefef;*/
+/*}*/
+
+/*.table-striped > tbody > tr:nth-child(2n+1) > td, .table-striped > tbody > tr:nth-child(2n+1) > th {*/
+   /*background-color: white;*/
+/*}*/
+
+
+.even {
    background-color: #efefef;
 }
 
-.table-striped > tbody > tr:nth-child(2n+1) > td, .table-striped > tbody > tr:nth-child(2n+1) > th {
+.odd {
    background-color: white;
 }
 .table-responsive{
@@ -158,6 +167,7 @@ a.tag-label {
 .loading{
     max-width:300px;
 }
+
 .checkmark-column {
     text-align: center;
 }
@@ -334,6 +344,7 @@ td {
   hyphens: auto;
 
 }
+
 @media screen and (min-width: 767px) {
     .outerdiv {
         padding-left: 30px;

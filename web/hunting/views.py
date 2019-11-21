@@ -10,12 +10,21 @@ import random
 import sys
 import traceback
 import uuid
+import logging
 import cProfile
 from datetime import datetime
 from time import time
-
 import docker
+import pymisp
+
+import re
+
+from pymisp import MISPObjectReference, MISPEvent, MISPObject
+from pymisp.tools import FileObject
+
 from lib.cuckoo.core.database import Database
+from lib.cuckoo.common.utils import sha1_file
+from django import template
 from django.conf import settings
 from django.core.urlresolvers import reverse
 from django.contrib.auth.decorators import login_required
@@ -26,6 +35,8 @@ from django.views.decorators.http import require_safe
 from elasticsearch import Elasticsearch
 from helpers import convert_hit_to_template
 from web.tlp_methods import get_tlp_users, create_tlp_query, get_analyses_numbers_matching_tlp2
+from lib.cuckoo.common.config import Config
+from lib.phoenix.rule_reader import get_hunting_suri_rules
 
 sys.path.insert(0, settings.CUCKOO_PATH)
 # analyses_prefix =
@@ -36,8 +47,9 @@ source_for_suri_yaml = settings.SURICATA_PATH
 jobSplitLength = 100
 mon = datetime.now().strftime('%Y%m%d')
 es = settings.ELASTIC
-
+log = logging.getLogger(__name__)
 results_db = settings.MONGO
+register = template.Library()
 
 
 def timing(f):
@@ -50,20 +62,26 @@ def timing(f):
 
     return wrap
 
+def check_misp_errors(response, error_str):
+    if "errors" in response:
+        raise Exception("{0}: {1}".format(error_str, response["errors"][-1]))
+    if "response" in response:
+        return response["response"]
 
 @require_safe
 @login_required
 def index(request):
     if request.user.is_authenticated():
-        query_template = '{"from": 0, "size": 10, "query":{"bool":{"must":[{"term":{"username.raw":"' + request.user.username + '"}},'
-        yara_query = query_template + '{"term":{"_type":"yara"}}]}}}'
-        suri_query = query_template + '{"term":{"_type":"suricata"}}]}}}'
-        yara_hunts = es.search(index="hunt-*", body=yara_query)
-        suricata_hunts = es.search(index="hunt-*", body=suri_query)
-        analyses_yhunts = [convert_hit_to_template(c) for c in yara_hunts['hits']['hits']]
-        analyses_surihunts = [convert_hit_to_template(c) for c in suricata_hunts['hits']['hits']]
-        return render(request, "hunting/index.html",
-                      {'yara_hunts': analyses_yhunts, 'suricata_hunts': analyses_surihunts})
+        # query_template = '{"from": 0, "size": 10, "query":{"bool":{"must":[{"term":{"username.raw":"' + request.user.username + '"}},'
+        # yara_query = query_template + '{"term":{"_type":"yara"}}]}}}'
+        # suri_query = query_template + '{"term":{"_type":"suricata"}}]}}}'
+        # yara_hunts = es.search(index="hunt-*", body=yara_query)
+        # suricata_hunts = es.search(index="hunt-*", body=suri_query)
+        # analyses_yhunts = [convert_hit_to_template(c) for c in yara_hunts['hits']['hits']]
+        # analyses_surihunts = [convert_hit_to_template(c) for c in suricata_hunts['hits']['hits']]
+        return render(request, "hunting/index.html"
+                      #, {'yara_hunts': analyses_yhunts, 'suricata_hunts': analyses_surihunts})
+                      )
     else:
         return redirect("/login?next=/hunting")
 
@@ -92,6 +110,8 @@ def get_hunt_data(request, task_id):
 
     for hit in es_hits:
         http_recs = []
+        hit["checkbox"] = ""
+
         analysis_id = hit["analysis_id"]
         if analysis_id not in mongo_results:
             continue
@@ -212,7 +232,8 @@ def kick_off_yara(analyses_numbers, client, hunting_uuid, strUuid, yaraRuleFile,
     os.makedirs(yara_malware_folder)
     # write yara rule file to new yara hunt dir
     volumes = {yara_root_folder: {'bind': '/yara', 'mode': 'rw'},
-               analyses_storage: {'bind': '/analyses', 'mode': 'ro'}}
+               analyses_storage: {'bind': '/analyses', 'mode': 'ro'},
+               '/opt/phoenix/storage/binaries' : {'bind': '/opt/phoenix/storage/binaries', 'mode': 'ro'}}
 
     with open(yara_rule_file_path, 'wb+') as yara_destination:
         for chunk in yaraRuleFile.chunks():
@@ -337,3 +358,147 @@ def status(request, task_id):
         })
     return redirect("hunting.views.report", task_id=task_id)
     # return redirect("analysis.views.report", task_id=task_id)
+
+def publish(request,hunt_uuid):
+    body = json.loads(request.body)
+    data = body["data"]
+    type = body["type"]
+    if not data or not type:
+        return "Nothing sent to me"
+    config = Config("reporting")
+    options = config.get("z_misp")
+    mymisp = options["url"]
+    auth_key = options["apikey"]
+    misp = pymisp.PyMISP(mymisp, auth_key, False)
+    if type == "suricata":
+        ruledict = get_hunting_suri_rules(hunt_uuid)
+    for item in data:
+        try:
+            analysis_id = item["analysis_id"]
+            events = check_misp_errors(misp.search_index(eventinfo="Phoenix Sandbox analysis #{0}".format(analysis_id)), "error parsing event object {0}".format(
+                analysis_id))
+        except Exception as e:
+            log.error(e.message)
+            continue
+        if type == "yara":
+            if 'storage/binaries' in item["raw_filename"]:
+                filepath = item["raw_filename"]
+            else:
+                filepath = os.path.join(analyses_prefix, *item["raw_filename"].split("/")[-3:])
+            hash = sha1_file("%s" % filepath)
+
+        for event in events:
+            event_object = MISPEvent()
+            event_object.load(misp.get_event(event["id"]))
+            file_objects = filter(lambda obj: obj["name"] == "file", event_object["Object"])
+            refs_to_add = []
+            if type == "yara":
+                yara_objects = filter(lambda obj: obj["name"] == "yara", event_object["Object"])
+                refs_to_add = publish_yara(event_object, file_objects, filepath, hash, hunt_uuid, item, yara_objects)
+            elif type == "suricata":
+                refs_to_add = publish_suricata(event_object, file_objects, item,ruledict)
+            if refs_to_add:
+                misp.update(event_object)
+                for ref in refs_to_add:
+                    misp.add_object_reference(ref)
+                misp.fast_publish(event_object["id"])
+
+    return JsonResponse({})
+
+
+def publish_suricata(event_object, file_objects, item, ruledict):
+    refs_to_add = []
+    original_file = get_original_file(file_objects)
+    if original_file:
+        objects = filter(lambda obj: obj["name"] == "suricata", event_object["Object"])
+        if has_suri_match(objects, item["alert"]["signature_id"], item["alert"]["rev"]):
+            return []
+        alert = item["alert"]
+        suri_obj = MISPObject(name='suricata', standalone=False)
+        suri_obj.add_attribute('suricata', type="snort", value=ruledict[(alert["signature_id"], alert["signature"])])
+        event_object.add_object(suri_obj)
+        suri_ref = MISPObjectReference()
+        suri_ref.from_dict(suri_obj.uuid, original_file["uuid"], "mitigates")
+        refs_to_add.append(suri_ref)
+    return refs_to_add
+
+
+def has_suri_match(objects, sid, rev):
+    for object in objects:
+        for att in object["Attribute"]:
+            if att["type"] == "snort" and re.search("sid:{0};".format(str(sid)), att["value"]) and re.search("rev:{0};".format(str(rev)), att["value"]):
+                return True
+
+
+
+
+def get_original_file(file_objects):
+    for file_object in file_objects:
+        for att in file_object["Attribute"]:
+            if att["category"] == "External analysis" and att["type"] == "malware-sample":
+                return file_object
+
+
+def publish_yara(event_object, file_objects, filepath, hash, hunt_uuid, item, yara_objects):
+    refs_to_add = []
+    matched_files = []
+
+    yfile = os.path.join(analyses_prefix, ".hunting", hunt_uuid, "yara/rules/yararules.yar")
+    with open(yfile, 'r') as myfile:
+        yfilestring = myfile.read()
+    yrulematch = re.search(r'rule\s+' + str(item["rule"]) + r'.*?\n\}', yfilestring, re.S)
+    if not yrulematch:
+        log.warn("Yara rule {0} not found in rules file {1}".format(item["rule"],yfile))
+        return []
+    attribute_lists = map(lambda outer_object: (outer_object["Attribute"], outer_object["ObjectReference"]), yara_objects)
+
+    itemdict = {}
+    for tuple in attribute_lists:
+        if tuple[0]:
+            file_refs = []
+            for object_ref in tuple[1]:
+                for file in file_objects:
+                    if file["uuid"] == object_ref["referenced_uuid"]:
+                        for att in file["Attribute"]:
+                            if att["type"] == "sha1":
+                                file_refs.append(att["value"])
+                                break
+                        break
+            itemdict[tuple[0][0]["value"]] = file_refs
+    # yara_rules_in_event  = [yara_object[0][0]["value"] for yara_object in attribute_lists if any(yara_object)]
+    if yrulematch.group(0) in itemdict and hash in itemdict[yrulematch.group(0)]:
+        log.info("Yara rule is already here and associated to the file")
+        return []
+    for file_object in file_objects:
+        for att in file_object["Attribute"]:
+            if att["category"] == "External analysis" and att["type"] == "malware-sample":
+                original_file = file_object
+            elif att["type"] == "sha1" and att["value"] == hash:
+                matched_files.append(file_object)
+                break
+    if not matched_files and original_file:
+        file = FileObject(filename=filepath.split("/")[-1], filepath=filepath)
+        event_object.add_object(file)
+        if "/memory/" in filepath:
+            relationship = "contained-within"
+        else:
+            relationship = "dropped-by"
+
+        file.add_reference(original_file["uuid"], relationship)
+        reference = MISPObjectReference()
+        reference.from_dict(file.uuid, original_file["uuid"], relationship)
+        refs_to_add.append(reference)
+        matched_files.append(file)
+    for file in matched_files:
+        yara_rule = MISPObject("yara", True, False)
+        yara_ref = MISPObjectReference()
+        yara_ref.from_dict(yara_rule.uuid, file["uuid"], "mitigates")
+        refs_to_add.append(yara_ref)
+
+        yara_rule.add_attribute("yara", value=yrulematch.group(0))
+
+        event_object.add_object(yara_rule)
+    return refs_to_add
+
+
+

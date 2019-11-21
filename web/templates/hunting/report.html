@@ -2,10 +2,33 @@
 {% load js %}
 
 {% load staticfiles %}
+{% load analysis_tags %}
+
 {% block content %}
     {% django_js jquery=false %}
 
     <script type="text/javascript">
+        function getPublishFunc(type) {
+            return function (e, dt, node, config) {
+                $("#publisher-div").show();
+                $.ajax({
+                    type: "POST",
+                    url: "ajax/publish/",
+                    data: JSON.stringify({data: dt.rows({selected: true}).data().toArray(), type: type}),
+                    contentType: "application/json; charset=utf-8",
+                    dataType: "json",
+                    success: function () {
+                        $("#publisher-div").hide();
+                        alert("Finished publishing to MISP");
+                    },
+                    error: function (xhr, textStatus, errorThrown) {
+                        $("#publisher-div").hide();
+                        alert("Error publishing to MISP: " + errorThrown)
+                    }
+                });
+            }
+        }
+
         String.prototype.trunc = String.prototype.trunc ||
             function (n) {
                 return (this.length > n) ? this.substr(0, n - 1) + '&hellip;' : this;
@@ -26,22 +49,40 @@
         const suri_table_obj =
             {
                 "dom": '<"toolbar">BRfipt<t>l',
-                "order": [[0, "desc"]],
+                "order": [[1, "desc"]],
                 "buttons": [
-                    'csv', 'excel'
+                    'csv', 'excel', 'selectAll', 'selectNone'
                 ],
                 {#'processing': true,#}
                 'responsive': true,
+                'select': {
+                    'style': 'multi',
+                    'selector': 'td:first-child'
+                },
 
                 {#"order": [[0, "desc"]],#}
-                "columns": [{
-                    "data": "analysis_id",
-                    "render": function (data) {
-                        if (data) {
-                            return '<a href="{0}">{1}</a>'.format(Django.url("analysis_report", data), data)
-                        }
+                "columnDefs": [
+                    {
+                        orderable: false,
+                        className: 'select-checkbox',
+                        targets: 0
                     }
-                },
+                ],
+                "columns": [
+                    {
+                        "data": "checkbox",
+                        "render": function (data) {
+                            return "<span></span>"
+
+                        }
+                    }, {
+                        "data": "analysis_id",
+                        "render": function (data) {
+                            if (data) {
+                                return '<a href="{0}">{1}</a>'.format(Django.url("analysis_report", data), data)
+                            }
+                        }
+                    },
                     {
                         "data": "alert.signature_id"
                     },
@@ -76,22 +117,41 @@
 
         const yara_table_obj = {
             "dom": '<"toolbar">BRfipt<t>l',
-            "order": [[0, "desc"]],
+            "order": [[1, "desc"]],
             "buttons": [
-                'csv', 'excel'
+                'csv', 'excel', 'selectAll', 'selectNone'
+
             ],
             {#'processing': true,#}
             'responsive': true,
-
-            {#"order": [[0, "desc"]],#}
-            "columns": [{
-                "data": "analysis_id",
-                "render": function (data) {
-                    if (data) {
-                        return '<a href="{0}">{1}</a>'.format(Django.url("analysis_report", data), data)
-                    }
-                }
+            'select': {
+                'style': 'multi',
+                'selector': 'td:first-child'
             },
+            {#"order": [[0, "desc"]],#}
+            "columnDefs": [
+                {
+                    orderable: false,
+                    className: 'select-checkbox',
+                    targets: 0
+                }
+            ],
+            "columns": [
+                {
+                    "data": "checkbox",
+                    "render": function (data) {
+                        return "<span></span>"
+
+                    }
+                },
+                {
+                    "data": "analysis_id",
+                    "render": function (data) {
+                        if (data) {
+                            return '<a href="{0}">{1}</a>'.format(Django.url("analysis_report", data), data)
+                        }
+                    }
+                },
 
                 {
                     "data": "alert.signature",
@@ -140,7 +200,22 @@
 
             ]
         };
+        {% if request.user|is_publisher %}
+            yara_table_obj.buttons.push({
+                text: 'Publish selected to MISP',
+                action: getPublishFunc("yara")
+            });
 
+            suri_table_obj.buttons.push({
+                text: 'Publish selected to MISP',
+                action: getPublishFunc("suricata")
+            });
+            {% comment %}
+            $.post(function(data,textStatus,jqXHR){
+                console.log(data);
+                console.log(textStatus);
+            });{% endcomment %}
+        {% endif %}
 
         $(document).ready(function () {
 
@@ -182,12 +257,18 @@
             <br/>
             <h3>Loading hunting data...</h3>
         </div>
+        <div id="publisher-div" style="width: 100%; text-align: center; display: none">
+            <img class="loading" src="{{ baseUrl }}/static/img/loader_gifs/{{ loading_image }}"/>
+            <br/>
+            <h3>Publishing hunting results to MISP...</h3>
+        </div>
         <div id="noresults-div" style="width: 100%; text-align: center; display:none">
             <h3>No hunting results</h3>
         </div>
         <table cellspacing="0" class="table table-striped" id="suri_table" style="width: 100%; display: none;">
             <thead>
             <tr>
+                <th></th>
                 <th>Analysis ID</th>
                 <th>Signature ID</th>
                 <th>Signature</th>
@@ -200,6 +281,7 @@
         <table cellspacing="0" class="table table-striped" id="yara_table" style="width: 100%; display: none;">
             <thead>
             <tr>
+                <th></th>
                 <th>Analysis ID</th>
                 <th>Signature</th>
                 <th>File Hit</th>
@@ -219,4 +301,5 @@
         {% endif %}
 
     {% endfor %}
+
 {% endblock %}

@@ -1,6 +1,8 @@
 from django.template.defaultfilters import register
 from django.templatetags import static
 
+from lib.phoenix.constants import PUBLISHERS_GROUP
+
 
 @register.filter
 def mongo_id(value):
@@ -121,3 +123,8 @@ def rl_link(url_fragment, value):
         querystr="{0}%3A{1}%20OR%20c2%3A{1}".format(url_fragment,value)
 
     return '<a href="https://a1000.reversinglabs.com/search/?q={0}" target="_blank"><img class="vtimage" src="{1}" /></a>'.format(querystr, static.static("images/reversinglabs.png"))
+
+
+@register.filter(name='is_publisher')
+def has_group(user):
+    return user.groups.filter(name=PUBLISHERS_GROUP).exists()

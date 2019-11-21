@@ -16,13 +16,13 @@
                 <div>
                     <h4>Select Suricata rules file to submit</h4>
                     <input type="file" name="suricataRulesFile">
-                    <h4>Recent Suricata Hunts</h4>
-                    <ul>
+                    {% comment %}  <h4>Recent Suricata Hunts</h4>
+                  <ul>
                         {% for hunt in suricata_hunts %}
 
                         <li><a href="{% url "hunting.views.report" hunt.uuid%}">{{hunt.timestamp}}</a> - {{hunt.uuid}}</li>
                         {% endfor %}
-                    </ul>
+                    </ul>{% endcomment %}
                 </div>
             </div>
         </div>
@@ -33,12 +33,12 @@
                 </div>
                 <h4>Select Yara rules file to submit</h4>
                 <input type="file" name="yaraRulesFile">
-                  <h4>Recent Yara Hunts</h4>
+        {% comment %}          <h4>Recent Yara Hunts</h4>
                     <ul>
                         {% for hunt in yara_hunts %}
                         <li><a href="{% url "hunting.views.report" hunt.uuid%}">{{hunt.timestamp}}</a> - {{hunt.uuid}}</li>
                         {% endfor %}
-                    </ul>
+                    </ul>{% endcomment %}
             </div>
         </div>
     </div>

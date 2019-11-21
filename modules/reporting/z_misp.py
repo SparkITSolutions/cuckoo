@@ -105,7 +105,9 @@ class MISP(Report):
         return ref
 
     def get_tldr(self, results, event, initial_file_object, sharing_group):
-        mongo_obj = mongoQuery({"info.id": self.task['id']})[0]
+        mongo_objs = mongoQuery({"info.id": self.task['id']})
+        for obj in mongo_objs:
+            mongo_obj = obj
         yhits = set()
         refs_to_add = []
         ##TODO Tlp needs to be done
@@ -158,7 +160,7 @@ class MISP(Report):
                 if entry["host"] not in resolved_hosts:
                     continue
                 uri_ = "%s://%s%s" % (entry["protocol"], entry["host"], entry["uri"])
-                if (not is_whitelisted_domain(entry["host"])) and (not is_whitelisted_url(uri_) and (uri_ not in urls_added) and "." in uri_):
+                if (not is_whitelisted_domain(entry["host"])) and (not is_whitelisted_url(uri_) and (not is_whitelisted_regex_url(uri_)) and (uri_ not in urls_added) and "." in uri_):
                     ## Check to see if the response body hash matches the hash of any of the files dropped on the filesystem
                     fname = check_sha1_in_dropped(entry["sha1"],results)
                     if not fname and "200 OK" in entry["response"]:
@@ -174,42 +176,42 @@ class MISP(Report):
                                 file_object["Attribute"].remove(attr)
                                 break
                         ## Make the URL object
-                        url_obj = MISPObject(name='url', standalone=False, text="File delivered from "+str(uri_)+" - Landed at: "+str(fname))
+                        http_request_obj = MISPObject(name='url', standalone=False, text="File delivered from "+str(uri_)+" - Landed at: "+str(fname))
                         ## Add a URL attribute to the URL object
-                        obj_attr = url_obj.add_attribute('url', value=uri_)
+                        obj_attr = http_request_obj.add_attribute('url', value=uri_)
                         obj_attr.add_tag("tlp:{0}".format(tlp))
                         ## Relate the stage 1 -> stage 2
-                        file_object.add_reference(url_obj.uuid, 'downloaded-from', 'File landed at '+str(fname))
-                        refs_to_add.append(self.create_reference(initial_file_object,url_obj.uuid,'downloaded'))
+                        file_object.add_reference(http_request_obj.uuid, 'downloaded-from', 'File landed at '+str(fname))
+                        refs_to_add.append(self.create_reference(initial_file_object,http_request_obj.uuid,'downloaded'))
                         refs_to_add.append(self.create_reference(initial_file_object,file_object.uuid, 'drops'))
                         file_object.add_reference(initial_file_object, 'dropped-by')
                         ## Add objects back to the event
-                        urls_added[uri_] = url_obj.uuid
-                        ips_added[entry["dst"]] = url_obj.uuid
-                        event_obj.add_object(url_obj)
+                        urls_added[uri_] = http_request_obj.uuid
+                        ips_added[entry["dst"]] = http_request_obj.uuid
+                        event_obj.add_object(http_request_obj)
                         event_obj.add_object(file_object)
                     else:
                         ## If there are no related URLs, just add the URL object
-                        url_obj = MISPObject(name='url', standalone=False)
-                        url_obj.add_attribute('url', value=uri_).add_tag("tlp:{0}".format(tlp))
-                        refs_to_add.append(self.create_reference(initial_file_object,url_obj.uuid,  'communicates-with'))
-                        urls_added[uri_] = url_obj.uuid
-                        event_obj.add_object(url_obj)
+                        http_request_obj = MISPObject(name='url', standalone=False)
+                        http_request_obj.add_attribute('url', value=uri_).add_tag("tlp:{0}".format(tlp))
+                        refs_to_add.append(self.create_reference(initial_file_object,http_request_obj.uuid,  'communicates-with'))
+                        urls_added[uri_] = http_request_obj.uuid
+                        event_obj.add_object(http_request_obj)
         if 'network' in results:
             if 'http' in results["network"]:
                 for entry in results["network"]["http"]:
                     uri_ = entry["uri"]
                     if (not is_whitelisted_domain(entry["host"])) and (
-                            not is_whitelisted_url(uri_) and (uri_ not in urls_added) and "." in uri_):
-                        url_obj = MISPObject(name='url', standalone=False)
-                        url_obj.add_attribute('url', value=uri_).add_tag("tlp:{0}".format(tlp))
-                        refs_to_add.append(self.create_reference(initial_file_object, url_obj.uuid, 'communicates-with'))
-                        urls_added[uri_] = url_obj.uuid
-                        event_obj.add_object(url_obj)
+                            not is_whitelisted_url(uri_) and (not is_whitelisted_regex_url(uri_)) and (uri_ not in urls_added) and "." in uri_):
+                        http_request_obj = MISPObject(name='url', standalone=False)
+                        http_request_obj.add_attribute('url', value=uri_).add_tag("tlp:{0}".format(tlp))
+                        refs_to_add.append(self.create_reference(initial_file_object, http_request_obj.uuid, 'communicates-with'))
+                        urls_added[uri_] = http_request_obj.uuid
+                        event_obj.add_object(http_request_obj)
 
             if 'domains' in results['network']:
                 for entry in results["network"].get('domains',[]):
-                    if entry["domain"] in resolved_hosts:
+                    if (entry["domain"] in resolved_hosts) and (not is_whitelisted_regex_url(entry["domain"])) and (not is_whitelisted_domain(entry["domain"])):
                         domain_obj = MISPObject(name="domain-ip", standalone=False, text="Domain and IP seen resolved")
                         domain_obj.add_attribute('domain', value=entry['domain'])
                         domain_obj.add_attribute('ip', value=entry['ip'])
@@ -273,7 +275,8 @@ class MISP(Report):
                         refs_to_add.append(self.create_reference(suri_obj.uuid, ips_added[alert["src_ip"]], 'mitigates'))
 
         # Add URLs found in memory
-        if 'procmemory' in mongo_obj:
+        # Temporarily disabling, since we're using this stuff in full automation - 2019-10-17
+        if 'procmemory' in mongo_obj and (len(urls_added) == 0):
             ## Didn't want to, but had to go back to mongo to get the procmemory stuff
             r = mongo_obj["procmemory"]
             for pmem in r:
@@ -291,12 +294,12 @@ class MISP(Report):
                         if memurl in urls_added and initial_file_object:
                             refs_to_add.append(self.create_reference(urls_added[memurl], initial_file_object, 'contained-within'))
                         else:
-                            url_obj = MISPObject(name='url', standalone=False, text="URL Found in memory")
-                            url_attr = url_obj.add_attribute('url', value=memurl)
+                            http_request_obj = MISPObject(name='url', standalone=False, text="URL Found in memory")
+                            url_attr = http_request_obj.add_attribute('url', value=memurl)
                             url_attr.add_tag("tlp:{0}".format(tlp))
-                            event_obj.add_object(url_obj)
+                            event_obj.add_object(http_request_obj)
                             if initial_file_object:
-                                refs_to_add.append(self.create_reference(url_obj.uuid, initial_file_object, 'contained-within'))
+                                refs_to_add.append(self.create_reference(http_request_obj.uuid, initial_file_object, 'contained-within'))
 
         ## Time to scan our files with our sharing ruleset, and create and tag mitigating controls
         if 'info' in results:
@@ -381,6 +384,43 @@ class MISP(Report):
                                         file_object.add_reference(mutex_obj.uuid,"uses")
 
                     event_obj.add_object(file_object)
+        if 'cobalt_strike' in mongo_obj:
+            for hit in mongo_obj["cobalt_strike"]:
+                http_request_obj = MISPObject(name='http-request', standalone=False)
+                url_components = hit["DOMAINS"].split(",")
+                url = "https://{0}{1}".format(url_components[0],url_components[1])
+                http_request_obj.add_attribute('url', value=url).add_tag("tlp:{0}".format(tlp))
+                http_request_obj.add_attribute('user-agent', value=hit.get("USERAGENT")).add_tag("tlp:{0}".format(tlp))
+                refs_to_add.append(self.create_reference(initial_file_object, http_request_obj.uuid, 'communicates-with'))
+                event_obj.add_object(http_request_obj)
+
+                http_request_obj2 = MISPObject(name='http-request', standalone=False)
+                url2 = "https://{0}{1}".format(url_components[0],hit.get("SUBMIT_URI"))
+                http_request_obj2.add_attribute('url', value=url2).add_tag("tlp:{0}".format(tlp))
+                http_request_obj2.add_attribute('user-agent', value=hit.get("USERAGENT")).add_tag("tlp:{0}".format(tlp))
+                http_request_obj2.add_attribute('text', value='SUBMIT_URI').add_tag("tlp:{0}".format(tlp))
+                refs_to_add.append(self.create_reference(initial_file_object, http_request_obj2.uuid, 'communicates-with'))
+                event_obj.add_object(http_request_obj2)
+
+                c_file_object_86 = MISPObject(name='file', standalone=False)
+                c_file_object_86.add_attribute('filename', value=hit.get("SPAWNTO_X86")).add_tag("tlp:{0}".format(tlp))
+                # c_file_object_86.add_attribute('category', value="Artifacts Dropped").add_tag("tlp:{0}".format(tlp))
+                event_obj.add_object(c_file_object_86)
+                refs_to_add.append(self.create_reference(initial_file_object, c_file_object_86.uuid, 'drops'))
+
+                c_file_object_64 = MISPObject(name='file', standalone=False)
+                c_file_object_64.add_attribute('filename', value=hit.get("SPAWNTO_X64")).add_tag("tlp:{0}".format(tlp))
+                # c_file_object_64.add_attribute('category', value="Artifacts Dropped").add_tag("tlp:{0}".format(tlp))
+                event_obj.add_object(c_file_object_64)
+                refs_to_add.append(self.create_reference(initial_file_object, c_file_object_64.uuid, 'drops'))
+
+                malware_config = MISPObject(name="malware-config", standalone=False)
+                malware_config.add_attribute('config', type='text', value=json.dumps(hit)).add_tag("tlp:{0}".format(tlp))
+                malware_config.add_attribute('format', type='text', value='JSON').add_tag("tlp:{0}".format(tlp))
+                refs_to_add.append(self.create_reference(initial_file_object, malware_config.uuid, 'contains'))
+
+                event_obj.add_object(malware_config)
+
         self.check_misp_errors(self.user_misp.update(event_obj), "Failed to update the event")
         for ref in refs_to_add:
             self.check_misp_errors(self.user_misp.add_object_reference(ref), "Failed to add references to object")
