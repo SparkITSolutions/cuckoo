@@ -143,6 +143,8 @@ def tasks_create_url():
 
     if not request.form.get("owner"):
         return json_error(400, "User not specified")
+    if not request.form.get("url"):
+        return json_error(400, "URL not specified")
     if not request.form.get("tlp") or request.form.get("tlp") not in ["green", "amber", "red"]:
         return json_error(400, "TLP must be specified as \"green\", \"amber\", or \"red\"")
     if not UsageLimits.take_credit(User.objects.get(username=request.form.get("owner", ""))):

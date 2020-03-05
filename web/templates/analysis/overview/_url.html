@@ -9,7 +9,18 @@
             </thead>
             <tbody>
                 <tr>
-                    <td><span class="mono">{{analysis.target.url}}</span></td>
+                    <td><span class="mono">{{analysis.target.url}}</span>
+                    <span class="pull-right">
+
+                    <a class="btn btn-info btn-xs" href="{% url "submission.views.resubmit" analysis.info.id %}">
+                        <span class="glyphicon glyphicon-refresh" aria-hidden="true"></span> Resubmit sample
+                    </a>
+
+ <a class="btn btn-info btn-xs" href="{% url "analysis.views.moloch" reportid=analysis.info.id %}" target="_blank">
+                        <span class="glyphicon glyphicon-link"></span> Moloch
+                    </a>
+                    </span>
+                    </td>
                 </tr>
             </tbody>
         </table>
