@@ -1,0 +1,1 @@
+PUBLISHERS_GROUP = "Publishers"

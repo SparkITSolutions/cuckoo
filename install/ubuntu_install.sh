@@ -219,7 +219,7 @@ fi
 ## Add mongodb repository for the client
 apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv 0C49F3730359A14518585931BC711F9BA15703C6
 echo "deb [ arch=amd64,arm64 ] http://repo.mongodb.org/apt/ubuntu xenial/mongodb-org/3.4 multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-3.4.list
-
+ add-apt-repository -y "deb http://security.ubuntu.com/ubuntu xenial-security main"
 ## Update and upgrade
 apt-get update -y
 apt-get upgrade -y
@@ -227,7 +227,7 @@ apt-get upgrade -y
 ## Check your version dependencies... once or twice...
 echo "Installing dependencies"
 
-apt-get -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confnew" install -y git fail2ban openvpn apache2 wget curl uuid-dev libmagic-dev pkg-config g++ flex bison zlib1g-dev libffi-dev gettext libgeoip-dev make libjson-perl libbz2-dev libwww-perl libpng-dev xz-utils libffi-dev iptables-persistent build-essential libssl-dev python-dev libxml2-dev libxslt-dev libtiff5-dev libjpeg8-dev zlib1g-dev libfreetype6-dev liblcms2-dev libwebp-dev tcl8.6-dev tk8.6-dev python-tk libmysqlclient-dev libpcre3-dbg libpcre3-dev autoconf automake libtool libpcap-dev libnet1-dev libyaml-dev zlib1g-dev libcap-ng-dev libmagic-dev libjansson-dev libjansson4 python-pip suricata yara htop nmon apparmor-utils tcpdump volatility mysql-client python python-yaml python-mysqldb python-psycopg2 lm-sensors netcat zlib1g-dev uuid-dev libmnl-dev gcc make autoconf autoconf-archive autogen automake pkg-config sysfsutils unzip rsyslog rsyslog-mmnormalize liblognorm-dev rsyslog-elasticsearch sqlite3 mongodb-clients curl python python-pip apt-transport-https libseccomp2 aufs-tools cgroupfs-mount cgroup-lite pigz ethtool uuid-runtime tesseract-ocr lsof libfuzzy-dev
+apt-get -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confnew" install -y git fail2ban openvpn apache2 wget curl uuid-dev libmagic-dev pkg-config g++ flex bison zlib1g-dev libffi-dev gettext libgeoip-dev make libjson-perl libbz2-dev libwww-perl libpng-dev xz-utils libffi-dev iptables-persistent build-essential libssl-dev python-dev libxml2-dev libxslt-dev libtiff5-dev libjpeg8-dev zlib1g-dev libfreetype6-dev liblcms2-dev libwebp-dev tcl8.6-dev tk8.6-dev python-tk libmysqlclient-dev libpcre3-dbg libpcre3-dev autoconf automake libtool libpcap-dev libnet1-dev libyaml-dev zlib1g-dev libcap-ng-dev libmagic-dev libjansson-dev libjansson4 python-pip suricata yara htop nmon apparmor-utils tcpdump volatility mysql-client python python-yaml python-mysqldb python-psycopg2 lm-sensors netcat zlib1g-dev uuid-dev libmnl-dev gcc make autoconf autoconf-archive autogen automake pkg-config sysfsutils unzip rsyslog rsyslog-mmnormalize liblognorm-dev rsyslog-elasticsearch sqlite3 mongodb-clients curl python python-pip apt-transport-https libseccomp2 aufs-tools cgroupfs-mount cgroup-lite pigz ethtool uuid-runtime tesseract-ocr lsof libfuzzy-dev libuv1-dev
 
 echo "Grabbing python requirements"
 pip install --upgrade pip
@@ -485,7 +485,7 @@ import_grafana() {
 ## Stop grafana to load dashboards
 ## TODO: make this idempotent
 docker-compose -f  ../docker/docker-compose.yml stop phoenix-grafana
-echo "INSERT INTO 'api_key' VALUES(2,1,'adminkey','fccbfcdb23dc238ea6c62697ffe214fe2e628d639f339ea70169df1f430ad0c32353cf90883e64ee5b1dae488ce3d2ba9261','Admin','2018-07-28 18:41:42','2018-07-28 18:41:42');" | sqlite3 ${DOCKER_GRAFANA_DIR}/grafana.db
+echo "INSERT INTO 'api_key' (id, org_id, name, key, role, created, updated) VALUES(2,1,'adminkey','fccbfcdb23dc238ea6c62697ffe214fe2e628d639f339ea70169df1f430ad0c32353cf90883e64ee5b1dae488ce3d2ba9261','Admin','2018-07-28 18:41:42','2018-07-28 18:41:42');" | sqlite3 ${DOCKER_GRAFANA_DIR}/grafana.db
 docker-compose -f ../docker/docker-compose.yml start phoenix-grafana
 echo "Waiting 45 s for Grafana to settle"
 sleep 45
@@ -815,6 +815,8 @@ python ../utils/community.py -waf
 
 ## Update cuckoo web db
 /etc/init.d/cuckoorooter restart
+#try and apply auth first
+python ../web/manage.py migrate auth
 python ../web/manage.py makemigrations auth
 python ../web/manage.py migrate auth
 python ../web/manage.py makemigrations
@@ -864,6 +866,7 @@ fi
 if [ -z $(docker ps -a|grep prodsuri) ]; then
     mkdir -p $CUCKOODIR/docker/suricata  && docker build -t prodsuricata $CUCKOODIR/docker/suricata
 fi
+
 }
 
 setup_netdata() {
