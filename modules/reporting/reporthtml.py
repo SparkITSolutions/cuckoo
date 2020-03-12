@@ -6,6 +6,7 @@
 import os
 import codecs
 import base64
+import gzip
 
 from lib.cuckoo.common.abstracts import Report
 from lib.cuckoo.common.constants import CUCKOO_ROOT
@@ -113,8 +114,9 @@ class ReportHTML(Report):
 
         try:
             report_path = os.path.join(self.reports_path, "report.html")
-            with codecs.open(report_path, "w", encoding="utf-8") as report:
-                report.write(html)
+            #with codecs.open(report_path, "w", encoding="utf-8") as report:
+            with gzip.open("{0}.gz".format(report_path), "wb+", 9) as report:
+                report.write(html.encode("utf-8"))
         except (TypeError, IOError) as e:
             raise CuckooReportError("Failed to write HTML report: %s" % e)
 

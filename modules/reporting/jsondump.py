@@ -2,7 +2,7 @@
 # Copyright (C) 2014-2016 Cuckoo Foundation.
 # This file is part of Cuckoo Sandbox - http://www.cuckoosandbox.org
 # See the file 'docs/LICENSE' for copying permission.
-
+import gzip
 import os
 import json
 import codecs
@@ -63,7 +63,8 @@ class JsonDump(Report):
         try:
             path = os.path.join(self.reports_path, "report.json")
 
-            with codecs.open(path, "w", "utf-8") as report:
+            #with codecs.open(path, "w", "utf-8") as report:
+            with gzip.open("{0}.gz".format(path), "wb+", 9) as report:
                 json.dump(results, report, default=default, sort_keys=False,
                           indent=int(indent), encoding=encoding)
         except (UnicodeError, TypeError, IOError) as e:

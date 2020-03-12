@@ -98,7 +98,7 @@ class ProcessMemory(Processing):
             if type_ == "CODE":
                 print>>o, "autoMark(%s, AU_CODE)" % region["addr"]
         o.seek(0)
-        with gzip.open(process["file"].replace(".dmp", ".py.gz"), 'wb+') as f_out:
+        with gzip.open(process["file"].replace(".dmp", ".py.gz"), 'wb+', 9) as f_out:
             f_out.writelines(o)
         os.remove(process["file"].replace(".dmp", ".py"))
 
